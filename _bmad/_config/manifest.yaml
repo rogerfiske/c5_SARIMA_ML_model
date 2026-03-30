@@ -1,0 +1,15 @@
+modules:
+  - name: core
+    version: 6.2.3-next.2
+    installDate: 2026-03-27T17:21:14.208Z
+    lastUpdated: 2026-03-27T17:32:20.646Z
+    source: built-in
+    npmPackage: null
+    repoUrl: null
+  - name: bmm
+    version: 6.2.3-next.2
+    installDate: 2026-03-27T17:21:14.761Z
+    lastUpdated: 2026-03-27T17:32:21.162Z
+    source: built-in
+    npmPackage: null
+    repoUrl: null

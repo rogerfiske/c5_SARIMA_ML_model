@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where:*)",
+      "Bash(poetry:*)",
+      "Bash(pip install:*)",
+      "Bash(for dir in src/c5_forecasting src/c5_forecasting/cli src/c5_forecasting/config src/c5_forecasting/domain src/c5_forecasting/data src/c5_forecasting/features src/c5_forecasting/models src/c5_forecasting/ranking src/c5_forecasting/evaluation src/c5_forecasting/registry src/c5_forecasting/pipelines tests tests/unit tests/integration tests/regression)",
+      "Bash(do touch \"$dir/__init__.py\")",
+      "Bash(done)",
+      "Bash(for dir in configs/datasets configs/features configs/models configs/runs data/interim data/processed data/features data/forecasts artifacts/manifests artifacts/runs artifacts/models artifacts/metrics artifacts/plots artifacts/champion docker docs/qa)",
+      "Bash(do touch \"$dir/.gitkeep\")",
+      "Bash(git branch:*)",
+      "Bash(git remote add:*)"
+    ]
+  }
+}
