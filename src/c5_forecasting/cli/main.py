@@ -218,5 +218,70 @@ def build_dataset_cmd(
     typer.echo("Build PASSED.")
 
 
+_FORECAST_VARIANT_OPTION = typer.Option(
+    None,
+    help="Dataset variant: 'raw' or 'curated'. Defaults to C5_DATASET_VARIANT setting.",
+)
+
+
+@app.command(name="forecast-next-day")
+def forecast_next_day_cmd(
+    variant: str = _FORECAST_VARIANT_OPTION,
+) -> None:
+    """Run the canary next-day top-20 forecast using the frequency baseline."""
+    from c5_forecasting.data.dataset_builder import VALID_VARIANTS
+    from c5_forecasting.pipelines.forecast import run_canary_forecast
+
+    settings = get_settings()
+
+    if variant is None:
+        variant = settings.dataset_variant
+    if variant not in VALID_VARIANTS:
+        typer.echo(f"Invalid variant {variant!r}. Must be one of: {sorted(VALID_VARIANTS)}")
+        raise typer.Exit(code=1)
+
+    # Resolve dataset path
+    parquet_path = settings.processed_data_dir / f"{variant}_v1.parquet"
+    if not parquet_path.exists():
+        typer.echo(f"Dataset not found: {parquet_path}")
+        typer.echo("Run 'build-dataset' first to create the working dataset.")
+        raise typer.Exit(code=1)
+
+    # Read manifest for fingerprints
+    manifest_path = settings.artifacts_dir / "manifests" / f"{variant}_v1_manifest.json"
+    dataset_fingerprint = ""
+    source_fingerprint = ""
+    if manifest_path.exists():
+        import json
+
+        with open(manifest_path) as f:
+            manifest_data = json.load(f)
+        dataset_fingerprint = manifest_data.get("output_sha256", "")
+        source_fingerprint = manifest_data.get("source_sha256", "")
+
+    # Run forecast
+    output_dir = settings.artifacts_dir / "runs" / "latest"
+    typer.echo(f"Running canary forecast (variant={variant!r})...")
+
+    result = run_canary_forecast(
+        dataset_path=parquet_path,
+        dataset_variant=variant,
+        dataset_fingerprint=dataset_fingerprint,
+        source_fingerprint=source_fingerprint,
+        output_dir=output_dir,
+    )
+
+    prov = result.provenance
+    typer.echo(f"  Run ID:        {prov.run_id}")
+    typer.echo(f"  Model:         {prov.model_name}")
+    typer.echo(f"  Variant:       {prov.dataset_variant}")
+    typer.echo(f"  Dataset rows:  {prov.dataset_row_count}")
+    typer.echo("  Top 5:")
+    for r in result.forecast.rankings[:5]:
+        typer.echo(f"    #{r.rank}: P_{r.part_id} (score={r.score:.6f})")
+    typer.echo(f"  Artifacts:     {result.artifacts}")
+    typer.echo("Forecast PASSED.")
+
+
 if __name__ == "__main__":
     app()

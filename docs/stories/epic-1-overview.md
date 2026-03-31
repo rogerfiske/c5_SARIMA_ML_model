@@ -14,7 +14,7 @@ and an executable vertical slice from raw data to top-20 output.
 | 1.2 | Implement raw ingestion and schema validation | Complete | 1.1 |
 | 1.3 | Implement event annotation and anomaly policy | Complete | 1.2 |
 | 1.4 | Build working datasets and curated experiment variant | Complete | 1.3 |
-| 1.5 | Deliver a canary next-day top-20 forecast flow | Ready | 1.4 |
+| 1.5 | Deliver a canary next-day top-20 forecast flow | Complete | 1.4 |
 
 ## Epic Completion Criteria
 
