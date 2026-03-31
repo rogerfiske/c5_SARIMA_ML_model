@@ -173,7 +173,7 @@ class TestExtractActualParts:
     def test_returns_active_ids(self) -> None:
         """Parts with value > 0 should be returned."""
         row = pd.Series({"P_1": 3, "P_2": 0, "P_3": 1, "date": "2020-01-01"})
-        parts, total = extract_actual_parts(row)
+        parts, total, counts = extract_actual_parts(row)
         assert 1 in parts
         assert 3 in parts
         assert 2 not in parts
@@ -183,9 +183,10 @@ class TestExtractActualParts:
         data = {col: 0 for col in PART_COLUMNS}
         data["date"] = "2020-01-01"
         row = pd.Series(data)
-        parts, total = extract_actual_parts(row)
+        parts, total, counts = extract_actual_parts(row)
         assert len(parts) == 0
         assert total == 0
+        assert len(counts) == 0
 
     def test_returns_sorted(self) -> None:
         """Output should be sorted ascending."""
@@ -195,7 +196,7 @@ class TestExtractActualParts:
         data["P_15"] = 1
         data["date"] = "2020-01-01"
         row = pd.Series(data)
-        parts, _ = extract_actual_parts(row)
+        parts, _, counts = extract_actual_parts(row)
         assert parts == sorted(parts)
 
     def test_row_total_is_sum(self) -> None:
@@ -205,8 +206,9 @@ class TestExtractActualParts:
         data["P_2"] = 5
         data["date"] = "2020-01-01"
         row = pd.Series(data)
-        _, total = extract_actual_parts(row)
+        _, total, counts = extract_actual_parts(row)
         assert total == 8
+        assert counts == {1: 3, 2: 5}
 
 
 # ---------------------------------------------------------------------------

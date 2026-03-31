@@ -74,6 +74,8 @@ class BacktestFold:
     hit_count: int
     hit_parts: list[int]
     miss_parts: list[int]
+    actual_part_counts: dict[int, int] = field(default_factory=dict)
+    all_scores: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -87,6 +89,8 @@ class BacktestFold:
             "hit_count": self.hit_count,
             "hit_parts": self.hit_parts,
             "miss_parts": self.miss_parts,
+            "actual_part_counts": self.actual_part_counts,
+            "all_scores": self.all_scores,
         }
 
 
@@ -210,16 +214,18 @@ def generate_backtest_windows(
 # ---------------------------------------------------------------------------
 # Actual-parts extraction
 # ---------------------------------------------------------------------------
-def extract_actual_parts(row: pd.Series) -> tuple[list[int], int]:
-    """Extract active part IDs and row total from a target row.
+def extract_actual_parts(row: pd.Series) -> tuple[list[int], int, dict[int, int]]:
+    """Extract active part IDs, row total, and per-part counts from a target row.
 
     Args:
         row: A single row (pd.Series) from the dataset.
 
     Returns:
-        Tuple of (sorted active part IDs, row_total).
+        Tuple of (sorted active part IDs, row_total, counts_dict).
+        counts_dict maps part_id → count for parts with count > 0.
     """
     active: list[int] = []
+    counts: dict[int, int] = {}
     total = 0
     for col in PART_COLUMNS:
         if col not in row.index:
@@ -229,7 +235,8 @@ def extract_actual_parts(row: pd.Series) -> tuple[list[int], int]:
         total += val
         if val > 0 and part_id in VALID_PART_IDS:
             active.append(part_id)
-    return sorted(active), total
+            counts[part_id] = val
+    return sorted(active), total, counts
 
 
 # ---------------------------------------------------------------------------
@@ -308,8 +315,8 @@ def run_backtest(
         scores = scoring_fn(train_fold)
         forecast = rank_and_select(scores, k=config.k, model_name=config.model_name)
 
-        # Extract actuals
-        actual_parts, actual_total = extract_actual_parts(target_row)
+        # Extract actuals (with per-part counts for metrics)
+        actual_parts, actual_total, actual_counts = extract_actual_parts(target_row)
 
         # Compare predicted vs actual
         predicted_ids = [r.part_id for r in forecast.rankings]
@@ -332,6 +339,8 @@ def run_backtest(
             hit_count=len(hits),
             hit_parts=hits,
             miss_parts=misses,
+            actual_part_counts=actual_counts,
+            all_scores=[{"part_id": s.part_id, "score": round(s.score, 6)} for s in scores],
         )
         folds.append(fold)
 

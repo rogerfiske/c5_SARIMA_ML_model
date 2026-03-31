@@ -319,6 +319,8 @@ def backtest_cmd(
     from c5_forecasting.data.dataset_builder import VALID_VARIANTS
     from c5_forecasting.evaluation.artifacts import write_backtest_artifacts
     from c5_forecasting.evaluation.backtest import BacktestConfig, run_backtest
+    from c5_forecasting.evaluation.metric_report import write_metric_report
+    from c5_forecasting.evaluation.metrics import compute_backtest_metrics
     from c5_forecasting.models.baseline import MODEL_NAME, compute_frequency_scores
 
     settings = get_settings()
@@ -369,9 +371,16 @@ def backtest_cmd(
         source_fingerprint=source_fingerprint,
     )
 
-    # Write artifacts
+    # Compute metrics
+    fold_metrics, metric_summary = compute_backtest_metrics(result)
+
+    # Write artifacts (with metrics)
     output_dir = settings.artifacts_dir / "backtests" / "latest"
-    artifact_paths = write_backtest_artifacts(result, output_dir)
+    artifact_paths = write_backtest_artifacts(
+        result, output_dir, fold_metrics=fold_metrics, metric_summary=metric_summary
+    )
+    metric_paths = write_metric_report(fold_metrics, metric_summary, result.provenance, output_dir)
+    artifact_paths.extend(metric_paths)
     result.artifacts = artifact_paths
 
     # Print summary
@@ -382,6 +391,9 @@ def backtest_cmd(
     typer.echo(f"  Mean hit count:   {s.mean_hit_count:.2f}")
     typer.echo(f"  Min hit count:    {s.min_hit_count}")
     typer.echo(f"  Max hit count:    {s.max_hit_count}")
+    typer.echo(f"  nDCG@20 mean:     {metric_summary.ndcg_20_mean:.4f}")
+    typer.echo(f"  WR@20 mean:       {metric_summary.weighted_recall_20_mean:.4f}")
+    typer.echo(f"  Brier mean:       {metric_summary.brier_score_mean:.4f}")
     typer.echo(f"  Cutoff range:     {s.first_cutoff_date} to {s.last_cutoff_date}")
     typer.echo(f"  Target range:     {s.first_target_date} to {s.last_target_date}")
     typer.echo(f"  Artifacts:        {artifact_paths}")
