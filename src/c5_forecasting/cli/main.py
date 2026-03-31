@@ -149,5 +149,74 @@ def annotate_dataset_cmd(
     typer.echo("Annotation PASSED.")
 
 
+_BUILD_CSV_OPTION = typer.Option(
+    None,
+    help="Path to raw CSV. Defaults to data/raw/c5_aggregated_matrix.csv",
+)
+
+_BUILD_CONFIG_OPTION = typer.Option(
+    None,
+    help="Path to event annotations YAML. Defaults to configs/datasets/event_annotations.yaml",
+)
+
+_BUILD_VARIANT_OPTION = typer.Option(
+    None,
+    help="Dataset variant: 'raw' or 'curated'. Defaults to C5_DATASET_VARIANT setting.",
+)
+
+
+@app.command(name="build-dataset")
+def build_dataset_cmd(
+    csv_path: Path = _BUILD_CSV_OPTION,
+    config_path: Path = _BUILD_CONFIG_OPTION,
+    variant: str = _BUILD_VARIANT_OPTION,
+) -> None:
+    """Build a working dataset (Parquet) from the validated raw CSV."""
+    from c5_forecasting.data.annotation import load_annotation_config
+    from c5_forecasting.data.dataset_builder import (
+        VALID_VARIANTS,
+        build_curated_dataset,
+        build_raw_dataset,
+        write_manifest,
+    )
+
+    settings = get_settings()
+
+    if csv_path is None:
+        csv_path = settings.raw_data_dir / "c5_aggregated_matrix.csv"
+    if config_path is None:
+        config_path = settings.configs_dir / "datasets" / "event_annotations.yaml"
+    if variant is None:
+        variant = settings.dataset_variant
+
+    if variant not in VALID_VARIANTS:
+        typer.echo(f"Invalid variant {variant!r}. Must be one of: {sorted(VALID_VARIANTS)}")
+        raise typer.Exit(code=1)
+
+    typer.echo(f"Building {variant!r} dataset from: {csv_path}")
+    annotation_config = load_annotation_config(config_path)
+
+    output_dir = settings.processed_data_dir
+    manifest_dir = settings.artifacts_dir / "manifests"
+
+    if variant == "raw":
+        df, manifest = build_raw_dataset(csv_path, annotation_config, output_dir)
+    else:
+        df, manifest = build_curated_dataset(csv_path, annotation_config, output_dir)
+
+    manifest_path = write_manifest(manifest, manifest_dir)
+
+    typer.echo(f"  Variant:       {manifest.variant_name}")
+    typer.echo(f"  Rows:          {manifest.row_count}")
+    typer.echo(f"  Columns:       {manifest.column_count}")
+    typer.echo(f"  Date range:    {manifest.date_min} to {manifest.date_max}")
+    typer.echo(f"  Source SHA-256: {manifest.source_sha256}")
+    typer.echo(f"  Output SHA-256: {manifest.output_sha256}")
+    typer.echo(f"  Output:        {manifest.output_path}")
+    typer.echo(f"  Manifest:      {manifest_path}")
+    typer.echo(f"  Transforms:    {manifest.transform_steps}")
+    typer.echo("Build PASSED.")
+
+
 if __name__ == "__main__":
     app()

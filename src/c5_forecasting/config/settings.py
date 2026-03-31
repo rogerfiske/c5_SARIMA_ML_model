@@ -19,6 +19,7 @@ class AppSettings(BaseSettings):
     data_dir: Path = Path("data")
     artifacts_dir: Path = Path("artifacts")
     configs_dir: Path = Path("configs")
+    dataset_variant: str = "raw"
 
     @property
     def raw_data_dir(self) -> Path:
