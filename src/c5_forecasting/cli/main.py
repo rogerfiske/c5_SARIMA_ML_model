@@ -283,5 +283,110 @@ def forecast_next_day_cmd(
     typer.echo("Forecast PASSED.")
 
 
+_BACKTEST_VARIANT_OPTION = typer.Option(
+    None,
+    help="Dataset variant: 'raw' or 'curated'. Defaults to C5_DATASET_VARIANT setting.",
+)
+
+_BACKTEST_MIN_TRAIN_OPTION = typer.Option(
+    365,
+    help="Minimum number of training rows before first cutoff.",
+)
+
+_BACKTEST_STEP_OPTION = typer.Option(
+    1,
+    help="Evaluate every Nth eligible cutoff (1=every day, 7=weekly).",
+)
+
+_BACKTEST_MAX_WINDOWS_OPTION = typer.Option(
+    None,
+    help="Maximum number of evaluation windows (None=unlimited).",
+)
+
+
+@app.command(name="backtest")
+def backtest_cmd(
+    variant: str = _BACKTEST_VARIANT_OPTION,
+    min_train_rows: int = _BACKTEST_MIN_TRAIN_OPTION,
+    step: int = _BACKTEST_STEP_OPTION,
+    max_windows: int | None = _BACKTEST_MAX_WINDOWS_OPTION,
+) -> None:
+    """Run rolling-origin backtesting with the frequency baseline."""
+    import json
+
+    import pandas as pd
+
+    from c5_forecasting.data.dataset_builder import VALID_VARIANTS
+    from c5_forecasting.evaluation.artifacts import write_backtest_artifacts
+    from c5_forecasting.evaluation.backtest import BacktestConfig, run_backtest
+    from c5_forecasting.models.baseline import MODEL_NAME, compute_frequency_scores
+
+    settings = get_settings()
+
+    if variant is None:
+        variant = settings.dataset_variant
+    if variant not in VALID_VARIANTS:
+        typer.echo(f"Invalid variant {variant!r}. Must be one of: {sorted(VALID_VARIANTS)}")
+        raise typer.Exit(code=1)
+
+    parquet_path = settings.processed_data_dir / f"{variant}_v1.parquet"
+    if not parquet_path.exists():
+        typer.echo(f"Dataset not found: {parquet_path}")
+        typer.echo("Run 'build-dataset' first to create the working dataset.")
+        raise typer.Exit(code=1)
+
+    # Load dataset
+    df = pd.read_parquet(parquet_path)
+
+    # Read manifest for fingerprints
+    manifest_path = settings.artifacts_dir / "manifests" / f"{variant}_v1_manifest.json"
+    dataset_fingerprint = ""
+    source_fingerprint = ""
+    if manifest_path.exists():
+        with open(manifest_path) as f:
+            manifest_data = json.load(f)
+        dataset_fingerprint = manifest_data.get("output_sha256", "")
+        source_fingerprint = manifest_data.get("source_sha256", "")
+
+    config = BacktestConfig(
+        min_train_rows=min_train_rows,
+        step=step,
+        max_windows=max_windows,
+        model_name=MODEL_NAME,
+    )
+
+    typer.echo(
+        f"Running backtest (variant={variant!r}, step={step}, "
+        f"min_train={min_train_rows}, max_windows={max_windows})..."
+    )
+
+    result = run_backtest(
+        df=df,
+        scoring_fn=compute_frequency_scores,
+        config=config,
+        dataset_variant=variant,
+        dataset_fingerprint=dataset_fingerprint,
+        source_fingerprint=source_fingerprint,
+    )
+
+    # Write artifacts
+    output_dir = settings.artifacts_dir / "backtests" / "latest"
+    artifact_paths = write_backtest_artifacts(result, output_dir)
+    result.artifacts = artifact_paths
+
+    # Print summary
+    s = result.summary
+    typer.echo(f"  Run ID:           {result.provenance.run_id}")
+    typer.echo(f"  Model:            {result.provenance.model_name}")
+    typer.echo(f"  Total folds:      {s.total_folds}")
+    typer.echo(f"  Mean hit count:   {s.mean_hit_count:.2f}")
+    typer.echo(f"  Min hit count:    {s.min_hit_count}")
+    typer.echo(f"  Max hit count:    {s.max_hit_count}")
+    typer.echo(f"  Cutoff range:     {s.first_cutoff_date} to {s.last_cutoff_date}")
+    typer.echo(f"  Target range:     {s.first_target_date} to {s.last_target_date}")
+    typer.echo(f"  Artifacts:        {artifact_paths}")
+    typer.echo("Backtest PASSED.")
+
+
 if __name__ == "__main__":
     app()
