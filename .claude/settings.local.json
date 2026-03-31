@@ -10,7 +10,8 @@
       "Bash(for dir in configs/datasets configs/features configs/models configs/runs data/interim data/processed data/features data/forecasts artifacts/manifests artifacts/runs artifacts/models artifacts/metrics artifacts/plots artifacts/champion docker docs/qa)",
       "Bash(do touch \"$dir/.gitkeep\")",
       "Bash(git branch:*)",
-      "Bash(git remote add:*)"
+      "Bash(git remote add:*)",
+      "Bash(git push:*)"
     ]
   }
 }
