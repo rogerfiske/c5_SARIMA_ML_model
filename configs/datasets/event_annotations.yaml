@@ -1,0 +1,64 @@
+# Event Annotations for the c5 Aggregated Matrix Dataset
+#
+# This file encodes all PO-reviewed exception dates — days where the daily
+# part-usage total deviates from the standard output of 30.
+#
+# These rows are VALID operating-condition data, NOT data defects.
+# Annotation enriches the dataset with domain context; it never alters
+# the raw count values.
+#
+# Schema:
+#   standard_daily_total: int  — normal operating total (30)
+#   reviewed_exceptions: list of {date, total, label, category}
+#     date:     YYYY-MM-DD string
+#     total:    observed daily part-usage total
+#     label:    human-readable event description
+#     category: one of [reduced_output, additional_output]
+
+standard_daily_total: 30
+
+reviewed_exceptions:
+  - date: "2008-12-25"
+    total: 20
+    label: "Christmas — reduced output"
+    category: "reduced_output"
+
+  - date: "2009-12-25"
+    total: 20
+    label: "Christmas — reduced output"
+    category: "reduced_output"
+
+  - date: "2010-12-25"
+    total: 20
+    label: "Christmas — reduced output"
+    category: "reduced_output"
+
+  - date: "2011-07-03"
+    total: 25
+    label: "Reduced output"
+    category: "reduced_output"
+
+  - date: "2011-08-28"
+    total: 25
+    label: "Reduced output"
+    category: "reduced_output"
+
+  - date: "2011-12-25"
+    total: 25
+    label: "Christmas — reduced output"
+    category: "reduced_output"
+
+  - date: "2012-05-15"
+    total: 35
+    label: "Additional output"
+    category: "additional_output"
+
+  - date: "2012-11-29"
+    total: 35
+    label: "Additional output"
+    category: "additional_output"
+
+  - date: "2012-12-25"
+    total: 25
+    label: "Christmas — reduced output"
+    category: "reduced_output"

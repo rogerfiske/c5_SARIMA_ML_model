@@ -91,5 +91,63 @@ def validate_raw(
         raise typer.Exit(code=1)
 
 
+_ANNOTATE_CSV_OPTION = typer.Option(
+    None,
+    help="Path to raw CSV. Defaults to data/raw/c5_aggregated_matrix.csv",
+)
+
+_ANNOTATE_CONFIG_OPTION = typer.Option(
+    None,
+    help="Path to event annotations YAML. Defaults to configs/datasets/event_annotations.yaml",
+)
+
+
+@app.command(name="annotate-dataset")
+def annotate_dataset_cmd(
+    csv_path: Path = _ANNOTATE_CSV_OPTION,
+    config_path: Path = _ANNOTATE_CONFIG_OPTION,
+) -> None:
+    """Annotate the raw dataset with event labels and anomaly flags."""
+    from c5_forecasting.data.annotation import annotate_dataset, load_annotation_config
+    from c5_forecasting.data.loader import load_raw_csv
+    from c5_forecasting.data.validation import validate_raw_dataset
+
+    settings = get_settings()
+
+    if csv_path is None:
+        csv_path = settings.raw_data_dir / "c5_aggregated_matrix.csv"
+    if config_path is None:
+        config_path = settings.configs_dir / "datasets" / "event_annotations.yaml"
+
+    # Validate first
+    typer.echo(f"Validating: {csv_path}")
+    val_result = validate_raw_dataset(csv_path)
+    if not val_result.is_valid:
+        typer.echo("Validation FAILED — cannot annotate invalid dataset.")
+        for err in val_result.errors:
+            typer.echo(f"  ERROR: {err}")
+        raise typer.Exit(code=1)
+
+    # Load and annotate
+    typer.echo(f"Loading annotation config: {config_path}")
+    config = load_annotation_config(config_path)
+
+    df = load_raw_csv(csv_path)
+    df_annotated, ann_result = annotate_dataset(df, config)
+
+    typer.echo(f"  Rows:                {ann_result.row_count}")
+    typer.echo(f"  Standard days:       {ann_result.standard_count}")
+    typer.echo(f"  Reviewed exceptions: {ann_result.reviewed_exception_count}")
+    typer.echo(f"  Unreviewed exceptions: {ann_result.unreviewed_exception_count}")
+    typer.echo(f"  Columns added:       {ann_result.annotation_columns_added}")
+
+    if ann_result.warnings:
+        typer.echo(f"  Warnings:            {len(ann_result.warnings)}")
+        for w in ann_result.warnings[:10]:
+            typer.echo(f"    WARN: {w}")
+
+    typer.echo("Annotation PASSED.")
+
+
 if __name__ == "__main__":
     app()

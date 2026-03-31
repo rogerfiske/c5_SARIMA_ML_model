@@ -10,10 +10,10 @@ and an executable vertical slice from raw data to top-20 output.
 
 | Story | Title | Status | Depends On |
 |---|---|---|---|
-| 1.1 | Create the executable project skeleton | Ready | None |
-| 1.2 | Implement raw ingestion and schema validation | Blocked on 1.1 | 1.1 |
-| 1.3 | Implement event annotation and anomaly policy | Blocked on 1.2 | 1.2 |
-| 1.4 | Build working datasets and curated experiment variant | Blocked on 1.3 | 1.3 |
+| 1.1 | Create the executable project skeleton | Complete | None |
+| 1.2 | Implement raw ingestion and schema validation | Complete | 1.1 |
+| 1.3 | Implement event annotation and anomaly policy | Complete | 1.2 |
+| 1.4 | Build working datasets and curated experiment variant | Ready | 1.3 |
 | 1.5 | Deliver a canary next-day top-20 forecast flow | Blocked on 1.4 | 1.4 |
 
 ## Epic Completion Criteria
