@@ -65,12 +65,13 @@ class TestRunLadder:
     def test_ladder_runs_all_models(
         self, synthetic_df: pd.DataFrame, ladder_config: BacktestConfig
     ) -> None:
-        """LadderResult should have entries for all 5 registered models."""
+        """LadderResult should have entries for all 6 registered models."""
         result = run_ladder(synthetic_df, ladder_config)
-        assert len(result.entries) == 5
+        assert len(result.entries) == 6
         model_names = {e.model_name for e in result.entries}
         expected = {
             "frequency_baseline",
+            "negbinom_glm",
             "recency_weighted",
             "rolling_window",
             "sarima",

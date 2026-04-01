@@ -24,6 +24,7 @@ def get_model_registry() -> dict[str, ScoringFunction]:
     and keep startup fast.
     """
     from c5_forecasting.models.baseline import compute_frequency_scores
+    from c5_forecasting.models.negbinom_glm import negbinom_glm_scoring
     from c5_forecasting.models.recency_weighted import compute_recency_weighted_scores
     from c5_forecasting.models.rolling_window import compute_rolling_window_scores
     from c5_forecasting.models.sarima import sarima_scoring
@@ -31,6 +32,7 @@ def get_model_registry() -> dict[str, ScoringFunction]:
 
     return {
         "frequency_baseline": compute_frequency_scores,
+        "negbinom_glm": negbinom_glm_scoring,
         "recency_weighted": compute_recency_weighted_scores,
         "rolling_window": compute_rolling_window_scores,
         "sarima": sarima_scoring,
