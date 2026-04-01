@@ -304,14 +304,21 @@ _BACKTEST_MAX_WINDOWS_OPTION = typer.Option(
 )
 
 
+_BACKTEST_MODEL_OPTION = typer.Option(
+    "frequency_baseline",
+    help="Model name to run. Use 'ladder' command to run all models.",
+)
+
+
 @app.command(name="backtest")
 def backtest_cmd(
     variant: str = _BACKTEST_VARIANT_OPTION,
     min_train_rows: int = _BACKTEST_MIN_TRAIN_OPTION,
     step: int = _BACKTEST_STEP_OPTION,
     max_windows: int | None = _BACKTEST_MAX_WINDOWS_OPTION,
+    model: str = _BACKTEST_MODEL_OPTION,
 ) -> None:
-    """Run rolling-origin backtesting with the frequency baseline."""
+    """Run rolling-origin backtesting with a specified baseline model."""
     import json
 
     import pandas as pd
@@ -321,7 +328,7 @@ def backtest_cmd(
     from c5_forecasting.evaluation.backtest import BacktestConfig, run_backtest
     from c5_forecasting.evaluation.metric_report import write_metric_report
     from c5_forecasting.evaluation.metrics import compute_backtest_metrics
-    from c5_forecasting.models.baseline import MODEL_NAME, compute_frequency_scores
+    from c5_forecasting.models.registry import get_scoring_function
 
     settings = get_settings()
 
@@ -336,6 +343,13 @@ def backtest_cmd(
         typer.echo(f"Dataset not found: {parquet_path}")
         typer.echo("Run 'build-dataset' first to create the working dataset.")
         raise typer.Exit(code=1)
+
+    # Look up scoring function
+    try:
+        scoring_fn = get_scoring_function(model)
+    except KeyError as e:
+        typer.echo(str(e))
+        raise typer.Exit(code=1) from None
 
     # Load dataset
     df = pd.read_parquet(parquet_path)
@@ -354,17 +368,17 @@ def backtest_cmd(
         min_train_rows=min_train_rows,
         step=step,
         max_windows=max_windows,
-        model_name=MODEL_NAME,
+        model_name=model,
     )
 
     typer.echo(
-        f"Running backtest (variant={variant!r}, step={step}, "
+        f"Running backtest (model={model!r}, variant={variant!r}, step={step}, "
         f"min_train={min_train_rows}, max_windows={max_windows})..."
     )
 
     result = run_backtest(
         df=df,
-        scoring_fn=compute_frequency_scores,
+        scoring_fn=scoring_fn,
         config=config,
         dataset_variant=variant,
         dataset_fingerprint=dataset_fingerprint,
@@ -398,6 +412,113 @@ def backtest_cmd(
     typer.echo(f"  Target range:     {s.first_target_date} to {s.last_target_date}")
     typer.echo(f"  Artifacts:        {artifact_paths}")
     typer.echo("Backtest PASSED.")
+
+
+_LADDER_VARIANT_OPTION = typer.Option(
+    None,
+    help="Dataset variant: 'raw' or 'curated'. Defaults to C5_DATASET_VARIANT setting.",
+)
+
+_LADDER_MIN_TRAIN_OPTION = typer.Option(
+    365,
+    help="Minimum number of training rows before first cutoff.",
+)
+
+_LADDER_STEP_OPTION = typer.Option(
+    1,
+    help="Evaluate every Nth eligible cutoff (1=every day, 7=weekly).",
+)
+
+_LADDER_MAX_WINDOWS_OPTION = typer.Option(
+    None,
+    help="Maximum number of evaluation windows (None=unlimited).",
+)
+
+
+@app.command(name="ladder")
+def ladder_cmd(
+    variant: str = _LADDER_VARIANT_OPTION,
+    min_train_rows: int = _LADDER_MIN_TRAIN_OPTION,
+    step: int = _LADDER_STEP_OPTION,
+    max_windows: int | None = _LADDER_MAX_WINDOWS_OPTION,
+) -> None:
+    """Run all baseline models and produce a ranked comparison."""
+    import json
+
+    import pandas as pd
+
+    from c5_forecasting.data.dataset_builder import VALID_VARIANTS
+    from c5_forecasting.evaluation.backtest import BacktestConfig
+    from c5_forecasting.evaluation.ladder import run_ladder, write_ladder_artifacts
+
+    settings = get_settings()
+
+    if variant is None:
+        variant = settings.dataset_variant
+    if variant not in VALID_VARIANTS:
+        typer.echo(f"Invalid variant {variant!r}. Must be one of: {sorted(VALID_VARIANTS)}")
+        raise typer.Exit(code=1)
+
+    parquet_path = settings.processed_data_dir / f"{variant}_v1.parquet"
+    if not parquet_path.exists():
+        typer.echo(f"Dataset not found: {parquet_path}")
+        typer.echo("Run 'build-dataset' first to create the working dataset.")
+        raise typer.Exit(code=1)
+
+    # Load dataset
+    df = pd.read_parquet(parquet_path)
+
+    # Read manifest for fingerprints
+    manifest_path = settings.artifacts_dir / "manifests" / f"{variant}_v1_manifest.json"
+    dataset_fingerprint = ""
+    source_fingerprint = ""
+    if manifest_path.exists():
+        with open(manifest_path) as f:
+            manifest_data = json.load(f)
+        dataset_fingerprint = manifest_data.get("output_sha256", "")
+        source_fingerprint = manifest_data.get("source_sha256", "")
+
+    config = BacktestConfig(
+        min_train_rows=min_train_rows,
+        step=step,
+        max_windows=max_windows,
+    )
+
+    typer.echo(
+        f"Running baseline ladder (variant={variant!r}, step={step}, "
+        f"min_train={min_train_rows}, max_windows={max_windows})..."
+    )
+
+    ladder_result = run_ladder(
+        df=df,
+        config=config,
+        dataset_variant=variant,
+        dataset_fingerprint=dataset_fingerprint,
+        source_fingerprint=source_fingerprint,
+    )
+
+    # Write comparison artifacts
+    output_dir = settings.artifacts_dir / "backtests" / "ladder"
+    artifact_paths = write_ladder_artifacts(ladder_result, output_dir)
+    ladder_result.artifacts = artifact_paths
+
+    # Print ranked summary
+    typer.echo("")
+    typer.echo(f"  Best model:       {ladder_result.best_model}")
+    typer.echo(f"  Models evaluated: {len(ladder_result.entries)}")
+    typer.echo("")
+    typer.echo("  Rank | Model                | nDCG@20 | WR@20  | Brier")
+    typer.echo("  -----|----------------------|---------|--------|------")
+    for i, entry in enumerate(ladder_result.entries):
+        s = entry.metric_summary
+        typer.echo(
+            f"  {i + 1:4d} | {entry.model_name:<20s} "
+            f"| {s.ndcg_20_mean:.4f}  | {s.weighted_recall_20_mean:.4f} "
+            f"| {s.brier_score_mean:.4f}"
+        )
+    typer.echo("")
+    typer.echo(f"  Artifacts:        {artifact_paths}")
+    typer.echo("Ladder PASSED.")
 
 
 if __name__ == "__main__":
