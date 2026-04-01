@@ -521,5 +521,283 @@ def ladder_cmd(
     typer.echo("Ladder PASSED.")
 
 
+_COMPARE_VARIANT_OPTION = typer.Option(
+    None,
+    help="Dataset variant: 'raw' or 'curated'. Defaults to C5_DATASET_VARIANT setting.",
+)
+
+_COMPARE_MIN_TRAIN_OPTION = typer.Option(
+    365,
+    help="Minimum number of training rows before first cutoff.",
+)
+
+_COMPARE_STEP_OPTION = typer.Option(
+    1,
+    help="Evaluate every Nth eligible cutoff (1=every day, 7=weekly).",
+)
+
+_COMPARE_MAX_WINDOWS_OPTION = typer.Option(
+    None,
+    help="Maximum number of evaluation windows (None=unlimited).",
+)
+
+_COMPARE_MIN_NDCG_DELTA_OPTION = typer.Option(
+    0.01,
+    help="Minimum nDCG@20 improvement over champion to be eligible.",
+)
+
+_COMPARE_MIN_WR_DELTA_OPTION = typer.Option(
+    0.01,
+    help="Minimum WR@20 improvement (reporting only, not gating).",
+)
+
+_COMPARE_MAX_BRIER_DELTA_OPTION = typer.Option(
+    0.01,
+    help="Maximum Brier improvement (reporting only, not gating).",
+)
+
+
+@app.command(name="compare")
+def compare_cmd(
+    variant: str = _COMPARE_VARIANT_OPTION,
+    min_train_rows: int = _COMPARE_MIN_TRAIN_OPTION,
+    step: int = _COMPARE_STEP_OPTION,
+    max_windows: int | None = _COMPARE_MAX_WINDOWS_OPTION,
+    min_ndcg_delta: float = _COMPARE_MIN_NDCG_DELTA_OPTION,
+    min_wr_delta: float = _COMPARE_MIN_WR_DELTA_OPTION,
+    max_brier_delta: float = _COMPARE_MAX_BRIER_DELTA_OPTION,
+) -> None:
+    """Run baseline ladder, compare against current champion, produce decision report."""
+    import json
+
+    import pandas as pd
+
+    from c5_forecasting.data.dataset_builder import VALID_VARIANTS
+    from c5_forecasting.evaluation.backtest import BacktestConfig
+    from c5_forecasting.evaluation.champion import load_champion
+    from c5_forecasting.evaluation.comparison import (
+        ComparisonConfig,
+        compare_to_champion,
+        write_comparison_report,
+    )
+    from c5_forecasting.evaluation.ladder import run_ladder, write_ladder_artifacts
+
+    settings = get_settings()
+
+    if variant is None:
+        variant = settings.dataset_variant
+    if variant not in VALID_VARIANTS:
+        typer.echo(f"Invalid variant {variant!r}. Must be one of: {sorted(VALID_VARIANTS)}")
+        raise typer.Exit(code=1)
+
+    parquet_path = settings.processed_data_dir / f"{variant}_v1.parquet"
+    if not parquet_path.exists():
+        typer.echo(f"Dataset not found: {parquet_path}")
+        typer.echo("Run 'build-dataset' first to create the working dataset.")
+        raise typer.Exit(code=1)
+
+    # Load dataset
+    df = pd.read_parquet(parquet_path)
+
+    # Read manifest for fingerprints
+    manifest_path = settings.artifacts_dir / "manifests" / f"{variant}_v1_manifest.json"
+    dataset_fingerprint = ""
+    source_fingerprint = ""
+    if manifest_path.exists():
+        with open(manifest_path) as f:
+            manifest_data = json.load(f)
+        dataset_fingerprint = manifest_data.get("output_sha256", "")
+        source_fingerprint = manifest_data.get("source_sha256", "")
+
+    config = BacktestConfig(
+        min_train_rows=min_train_rows,
+        step=step,
+        max_windows=max_windows,
+    )
+
+    typer.echo(
+        f"Running compare (variant={variant!r}, step={step}, "
+        f"min_train={min_train_rows}, max_windows={max_windows})..."
+    )
+
+    # Run ladder
+    ladder_result = run_ladder(
+        df=df,
+        config=config,
+        dataset_variant=variant,
+        dataset_fingerprint=dataset_fingerprint,
+        source_fingerprint=source_fingerprint,
+    )
+
+    # Write ladder artifacts
+    ladder_dir = settings.artifacts_dir / "backtests" / "ladder"
+    write_ladder_artifacts(ladder_result, ladder_dir)
+
+    # Load current champion
+    champion = load_champion(settings.artifacts_dir)
+
+    # Run comparison
+    comp_config = ComparisonConfig(
+        min_ndcg_delta=min_ndcg_delta,
+        min_wr_delta=min_wr_delta,
+        max_brier_delta=max_brier_delta,
+    )
+    comparison = compare_to_champion(ladder_result, champion, comp_config, dataset_variant=variant)
+
+    # Write comparison report
+    comp_dir = settings.artifacts_dir / "comparisons" / "latest"
+    artifact_paths = write_comparison_report(comparison, comp_dir)
+
+    # Print summary
+    typer.echo("")
+    if champion is not None:
+        typer.echo(f"  Current champion: {champion.model_name} (nDCG={champion.ndcg_20_mean:.4f})")
+    else:
+        typer.echo("  Current champion: (none)")
+    typer.echo("")
+    typer.echo("  Rank | Model                | nDCG@20 | WR@20  | Brier  | Verdict")
+    typer.echo("  -----|----------------------|---------|--------|--------|--------")
+    for i, entry in enumerate(comparison.entries):
+        s = entry.metric_summary
+        typer.echo(
+            f"  {i + 1:4d} | {entry.model_name:<20s} "
+            f"| {s.ndcg_20_mean:.4f}  | {s.weighted_recall_20_mean:.4f} "
+            f"| {s.brier_score_mean:.4f} | {entry.verdict.value}"
+        )
+    typer.echo("")
+    if comparison.champion_candidate is not None:
+        typer.echo(
+            f"  Champion candidate: {comparison.champion_candidate} "
+            f"— run 'promote --confirm' to approve."
+        )
+    else:
+        typer.echo("  No champion candidate meets the threshold.")
+    typer.echo(f"  Artifacts:        {artifact_paths}")
+    typer.echo("Compare PASSED.")
+
+
+_PROMOTE_COMPARISON_DIR_OPTION = typer.Option(
+    None,
+    help=("Path to comparison artifacts dir. Defaults to artifacts/comparisons/latest."),
+)
+
+_PROMOTE_APPROVER_OPTION = typer.Option(
+    "PO",
+    help="Name/role of approver.",
+)
+
+_PROMOTE_CONFIRM_OPTION = typer.Option(
+    False,
+    "--confirm",
+    help="Required flag to actually write champion.json.",
+)
+
+
+@app.command(name="promote")
+def promote_cmd(
+    comparison_dir: Path = _PROMOTE_COMPARISON_DIR_OPTION,
+    approver: str = _PROMOTE_APPROVER_OPTION,
+    confirm: bool = _PROMOTE_CONFIRM_OPTION,
+) -> None:
+    """Promote the champion candidate from a comparison report."""
+    import json
+
+    from c5_forecasting.evaluation.champion import (
+        ChampionRecord,
+        save_champion,
+    )
+
+    settings = get_settings()
+
+    if comparison_dir is None:
+        comparison_dir = settings.artifacts_dir / "comparisons" / "latest"
+
+    report_path = comparison_dir / "comparison_report.json"
+    if not report_path.exists():
+        typer.echo(f"Comparison report not found: {report_path}")
+        typer.echo("Run 'compare' first to produce a comparison report.")
+        raise typer.Exit(code=1)
+
+    with open(report_path) as f:
+        report_data = json.load(f)
+
+    candidate_name = report_data.get("champion_candidate")
+    if candidate_name is None:
+        typer.echo("No champion candidate in this comparison report.")
+        typer.echo("No model meets the minimum improvement threshold.")
+        raise typer.Exit(code=1)
+
+    # Find the candidate's metrics from entries
+    candidate_metrics = None
+    for entry in report_data["entries"]:
+        if entry["model_name"] == candidate_name:
+            candidate_metrics = entry["metrics"]
+            break
+
+    if candidate_metrics is None:
+        typer.echo(f"Candidate {candidate_name!r} not found in report entries.")
+        raise typer.Exit(code=1)
+
+    typer.echo(f"  Candidate:   {candidate_name}")
+    primary = candidate_metrics.get("primary", {})
+    ndcg_mean = primary.get("ndcg_20", {}).get("mean", 0.0)
+    wr_mean = primary.get("weighted_recall_20", {}).get("mean", 0.0)
+    brier_mean = primary.get("brier_score", {}).get("mean", 0.0)
+    typer.echo(f"  nDCG@20:     {ndcg_mean:.4f}")
+    typer.echo(f"  WR@20:       {wr_mean:.4f}")
+    typer.echo(f"  Brier:       {brier_mean:.4f}")
+
+    if not confirm:
+        typer.echo("")
+        typer.echo("  Dry run — pass --confirm to actually promote.")
+        typer.echo("Promote DRY-RUN.")
+        return
+
+    # Build and save ChampionRecord
+    from datetime import UTC, datetime
+
+    record = ChampionRecord(
+        model_name=candidate_name,
+        ndcg_20_mean=ndcg_mean,
+        weighted_recall_20_mean=wr_mean,
+        brier_score_mean=brier_mean,
+        promoted_at=datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        promoted_from_comparison=report_data.get("comparison_id", ""),
+        backtest_config=report_data.get("backtest_config", {}),
+        dataset_variant=report_data.get("dataset_variant", ""),
+        approver=approver,
+    )
+    champion_path = save_champion(record, settings.artifacts_dir)
+
+    typer.echo("")
+    typer.echo(f"  Champion promoted: {candidate_name}")
+    typer.echo(f"  Approver:          {approver}")
+    typer.echo(f"  Written to:        {champion_path}")
+    typer.echo("Promote PASSED.")
+
+
+@app.command(name="champion")
+def champion_cmd() -> None:
+    """Show the current champion model, or report that none is set."""
+    from c5_forecasting.evaluation.champion import load_champion
+
+    settings = get_settings()
+    record = load_champion(settings.artifacts_dir)
+
+    if record is None:
+        typer.echo("No champion set.")
+        typer.echo("Run 'compare' then 'promote --confirm' to establish one.")
+        return
+
+    typer.echo(f"  Model:       {record.model_name}")
+    typer.echo(f"  nDCG@20:     {record.ndcg_20_mean:.4f}")
+    typer.echo(f"  WR@20:       {record.weighted_recall_20_mean:.4f}")
+    typer.echo(f"  Brier:       {record.brier_score_mean:.4f}")
+    typer.echo(f"  Promoted at: {record.promoted_at}")
+    typer.echo(f"  Approver:    {record.approver}")
+    typer.echo(f"  Variant:     {record.dataset_variant}")
+    typer.echo("Champion PASSED.")
+
+
 if __name__ == "__main__":
     app()
