@@ -26,12 +26,14 @@ def get_model_registry() -> dict[str, ScoringFunction]:
     from c5_forecasting.models.baseline import compute_frequency_scores
     from c5_forecasting.models.recency_weighted import compute_recency_weighted_scores
     from c5_forecasting.models.rolling_window import compute_rolling_window_scores
+    from c5_forecasting.models.sarima import sarima_scoring
     from c5_forecasting.models.uniform import compute_uniform_scores
 
     return {
         "frequency_baseline": compute_frequency_scores,
         "recency_weighted": compute_recency_weighted_scores,
         "rolling_window": compute_rolling_window_scores,
+        "sarima": sarima_scoring,
         "uniform_baseline": compute_uniform_scores,
     }
 
