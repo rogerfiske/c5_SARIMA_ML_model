@@ -11,7 +11,22 @@
       "Bash(do touch \"$dir/.gitkeep\")",
       "Bash(git branch:*)",
       "Bash(git remote add:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(cd:*)",
+      "Bash(git status:*)",
+      "Bash(find:*)",
+      "Bash(python3:*)",
+      "Bash(git -C \"c:\\\\Users\\\\Minis\\\\CascadeProjects\\\\c5_SARIMA_ML_model\" status)",
+      "Bash(git -C \"c:\\\\Users\\\\Minis\\\\CascadeProjects\\\\c5_SARIMA_ML_model\" diff --stat)",
+      "Bash(git -C \"c:\\\\Users\\\\Minis\\\\CascadeProjects\\\\c5_SARIMA_ML_model\" log --oneline -5)",
+      "Bash(git -C \"c:\\\\Users\\\\Minis\\\\CascadeProjects\\\\c5_SARIMA_ML_model\" add src/c5_forecasting/models/negbinom_glm.py src/c5_forecasting/models/registry.py tests/unit/test_negbinom_glm.py tests/integration/test_negbinom_backtest.py tests/unit/test_model_registry.py tests/unit/test_ladder.py tests/integration/test_ladder.py docs/stories/story-3.2-count-aware-candidate.md)",
+      "Bash(git -C \"c:\\\\Users\\\\Minis\\\\CascadeProjects\\\\c5_SARIMA_ML_model\" commit -m \"$\\(cat <<''EOF''\nfeat: Story 3.2 — count-aware candidate \\(Negative Binomial GLM\\)\n\nAdd per-part NegBinom GLM with lag-1/lag-7 autoregressive features as a\ncount-aware challenger model. Ranks 3rd of 6 models \\(nDCG@20=0.5356\\),\nbeating SARIMA while being ~50x faster. 387 tests passing.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git -C \"c:\\\\Users\\\\Minis\\\\CascadeProjects\\\\c5_SARIMA_ML_model\" push origin main)",
+      "Bash(git -C \"c:\\\\Users\\\\Minis\\\\CascadeProjects\\\\c5_SARIMA_ML_model\" add pyproject.toml poetry.lock src/c5_forecasting/models/gbm_ranking.py src/c5_forecasting/models/registry.py tests/unit/test_gbm_ranking.py tests/integration/test_gbm_backtest.py tests/unit/test_model_registry.py tests/unit/test_ladder.py tests/integration/test_ladder.py docs/stories/story-3.3-gbm-ranking-challenger.md)",
+      "Bash(git -C \"c:\\\\Users\\\\Minis\\\\CascadeProjects\\\\c5_SARIMA_ML_model\" commit -m \"$\\(cat <<''EOF''\nfeat: Story 3.3 — ML ranking challenger \\(GBM with HistGradientBoosting\\)\n\nAdd per-part HistGradientBoostingRegressor with 6 engineered features\n\\(lag-1/7/14, rolling mean 7/30, day-of-week\\) as an ML challenger model.\nRanks 4th of 7 models \\(nDCG@20=0.5260\\). Adds scikit-learn dependency.\n408 tests passing.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(docker build:*)",
+      "Bash(ls:*)",
+      "Bash(wc:*)"
     ]
   }
 }
