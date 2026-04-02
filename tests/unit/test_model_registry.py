@@ -32,6 +32,9 @@ def _make_row(date_str: str, counts: dict[str, int] | None = None) -> dict:
 
 
 EXPECTED_MODELS = {
+    "ensemble_avg",
+    "ensemble_rank_avg",
+    "ensemble_weighted",
     "frequency_baseline",
     "gbm_ranking",
     "negbinom_glm",
@@ -45,10 +48,10 @@ EXPECTED_MODELS = {
 class TestModelRegistry:
     """Tests for the model registry."""
 
-    def test_registry_has_seven_models(self) -> None:
-        """Registry should contain exactly 7 models."""
+    def test_registry_has_ten_models(self) -> None:
+        """Registry should contain exactly 10 models."""
         registry = get_model_registry()
-        assert len(registry) == 7
+        assert len(registry) == 10
 
     def test_all_names_present(self) -> None:
         """All expected model names should be registered."""

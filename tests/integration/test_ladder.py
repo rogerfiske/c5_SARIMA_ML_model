@@ -38,7 +38,7 @@ class TestRealLadder:
     def test_ladder_completes_on_real_data(self, ladder_result: LadderResult) -> None:
         """Full ladder should run without error on real dataset."""
         assert isinstance(ladder_result, LadderResult)
-        assert len(ladder_result.entries) == 7
+        assert len(ladder_result.entries) == 10
 
     def test_all_models_produce_valid_forecasts(self, ladder_result: LadderResult) -> None:
         """Each model's folds should have exactly 20 valid IDs in 1..39."""

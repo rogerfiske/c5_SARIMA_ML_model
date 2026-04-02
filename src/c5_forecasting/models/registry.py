@@ -24,6 +24,11 @@ def get_model_registry() -> dict[str, ScoringFunction]:
     and keep startup fast.
     """
     from c5_forecasting.models.baseline import compute_frequency_scores
+    from c5_forecasting.models.ensemble import (
+        ensemble_avg_scoring,
+        ensemble_rank_avg_scoring,
+        ensemble_weighted_scoring,
+    )
     from c5_forecasting.models.gbm_ranking import gbm_ranking_scoring
     from c5_forecasting.models.negbinom_glm import negbinom_glm_scoring
     from c5_forecasting.models.recency_weighted import compute_recency_weighted_scores
@@ -32,6 +37,9 @@ def get_model_registry() -> dict[str, ScoringFunction]:
     from c5_forecasting.models.uniform import compute_uniform_scores
 
     return {
+        "ensemble_avg": ensemble_avg_scoring,
+        "ensemble_rank_avg": ensemble_rank_avg_scoring,
+        "ensemble_weighted": ensemble_weighted_scoring,
         "frequency_baseline": compute_frequency_scores,
         "gbm_ranking": gbm_ranking_scoring,
         "negbinom_glm": negbinom_glm_scoring,
