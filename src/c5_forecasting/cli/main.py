@@ -799,5 +799,147 @@ def champion_cmd() -> None:
     typer.echo("Champion PASSED.")
 
 
+@app.command(name="export-daily-predictions")
+def export_daily_predictions_cmd(
+    variant: str = typer.Option(
+        None,
+        help="Dataset variant: 'raw' or 'curated'. Defaults to C5_DATASET_VARIANT setting.",
+    ),
+    min_train_rows: int = typer.Option(
+        365,
+        help="Minimum number of training rows before first cutoff.",
+    ),
+    step: int = typer.Option(
+        1,
+        help="Evaluate every Nth eligible cutoff (1=daily).",
+    ),
+    model: str = typer.Option(
+        "frequency_baseline",
+        help="Model name to use for predictions.",
+    ),
+    output: Path | None = None,
+) -> None:
+    """Generate historical daily predictions and save to CSV.
+
+    Produces one prediction row per eligible target date using strict rolling-origin
+    backtest logic with no future leakage. Each row contains 20 predictions, 20 scores,
+    actual parts, and per-fold metrics.
+
+    This is a PO-approved exception to write into data/raw/ for export purposes.
+    A timestamped copy is also saved to artifacts/exports/ for audit trail.
+    """
+    import json
+
+    import pandas as pd
+
+    from c5_forecasting.data.dataset_builder import VALID_VARIANTS
+    from c5_forecasting.evaluation.backtest import BacktestConfig, run_backtest
+    from c5_forecasting.evaluation.metrics import compute_backtest_metrics
+    from c5_forecasting.evaluation.prediction_export import (
+        write_daily_predictions_csv,
+        write_timestamped_export,
+    )
+    from c5_forecasting.models.registry import get_scoring_function
+
+    settings = get_settings()
+
+    # Resolve variant
+    if variant is None:
+        variant = settings.dataset_variant
+    if variant not in VALID_VARIANTS:
+        typer.echo(f"Invalid variant {variant!r}. Must be one of: {sorted(VALID_VARIANTS)}")
+        raise typer.Exit(code=1)
+
+    # Resolve output path
+    if output is None:
+        output = Path("data") / "raw" / "c5_predictions.csv"
+
+    # Load dataset
+    parquet_path = settings.processed_data_dir / f"{variant}_v1.parquet"
+    if not parquet_path.exists():
+        typer.echo(f"Dataset not found: {parquet_path}")
+        typer.echo("Run 'build-dataset' first to create the working dataset.")
+        raise typer.Exit(code=1)
+
+    df = pd.read_parquet(parquet_path)
+
+    # Load manifest for fingerprints
+    manifest_path = settings.artifacts_dir / "manifests" / f"{variant}_v1_manifest.json"
+    dataset_fingerprint = ""
+    source_fingerprint = ""
+    if manifest_path.exists():
+        with open(manifest_path) as f:
+            manifest_data = json.load(f)
+        dataset_fingerprint = manifest_data.get("output_sha256", "")
+        source_fingerprint = manifest_data.get("source_sha256", "")
+
+    # Get scoring function
+    try:
+        scoring_fn = get_scoring_function(model)
+    except KeyError as e:
+        typer.echo(str(e))
+        raise typer.Exit(code=1) from None
+
+    # Configure backtest (step=1 for daily, no max_windows for full history)
+    config = BacktestConfig(
+        min_train_rows=min_train_rows,
+        step=step,
+        max_windows=None,  # Export full history
+        model_name=model,
+    )
+
+    typer.echo(
+        f"Generating daily predictions (model={model!r}, variant={variant!r}, "
+        f"min_train={min_train_rows}, step={step})..."
+    )
+
+    # Run backtest to generate predictions
+    result = run_backtest(
+        df=df,
+        scoring_fn=scoring_fn,
+        config=config,
+        dataset_variant=variant,
+        dataset_fingerprint=dataset_fingerprint,
+        source_fingerprint=source_fingerprint,
+    )
+
+    # Compute metrics
+    fold_metrics, _ = compute_backtest_metrics(result)
+
+    # Write primary export
+    typer.echo(f"Writing predictions to: {output}")
+    export_path = write_daily_predictions_csv(result, fold_metrics, output)
+
+    # Write timestamped copy for audit trail
+    df_export = pd.read_csv(export_path)
+    timestamped_path = write_timestamped_export(
+        df_export,
+        settings.artifacts_dir,
+        "c5_predictions.csv",
+    )
+
+    # Summary
+    typer.echo("")
+    typer.echo(f"  Model:            {result.provenance.model_name}")
+    typer.echo(f"  Dataset variant:  {result.provenance.dataset_variant}")
+    typer.echo(f"  Total rows:       {len(df_export)}")
+    typer.echo(f"  First target:     {df_export['target_date'].iloc[0]}")
+    typer.echo(f"  Last target:      {df_export['target_date'].iloc[-1]}")
+    typer.echo(f"  Primary output:   {export_path}")
+    typer.echo(f"  Timestamped copy: {timestamped_path}")
+
+    # Verify no zeros in predictions
+    pred_cols = [f"pred_{i:02d}" for i in range(1, 21)]
+    has_zeros = any((df_export[col] == 0).any() for col in pred_cols)
+    if has_zeros:
+        typer.echo("  WARNING: Found zeros in prediction columns!")
+        raise typer.Exit(code=1)
+    else:
+        typer.echo("  Zero check:       PASSED (no zeros in predictions)")
+
+    typer.echo("")
+    typer.echo("Export PASSED.")
+
+
 if __name__ == "__main__":
     app()
