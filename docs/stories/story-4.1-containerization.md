@@ -300,7 +300,7 @@ Two new documentation files provide comprehensive usage guidance:
 
 ## 10. Commit Hash
 
-**Story 4.1 commit**: *(To be added after commit)*
+**Story 4.1 commit**: `8f06dec`
 
 ## Notes
 
