@@ -834,7 +834,7 @@ def export_daily_predictions_cmd(
 
     from c5_forecasting.data.dataset_builder import VALID_VARIANTS
     from c5_forecasting.evaluation.backtest import BacktestConfig, run_backtest
-    from c5_forecasting.evaluation.metrics import compute_backtest_metrics
+    from c5_forecasting.evaluation.metrics import FoldMetrics, compute_backtest_metrics
     from c5_forecasting.evaluation.prediction_export import (
         write_daily_predictions_csv,
         write_simple_predictions_csv,
@@ -911,6 +911,66 @@ def export_daily_predictions_cmd(
 
     # Compute metrics
     fold_metrics, _ = compute_backtest_metrics(result)
+
+    # Generate one final forward-looking forecast for the next day
+    typer.echo("Generating forward-looking forecast for next day...")
+    from datetime import datetime, timedelta
+
+    from c5_forecasting.ranking.ranker import rank_and_select
+
+    # Get the last date in the dataset
+    last_date_obj = df["date"].iloc[-1]
+    if isinstance(last_date_obj, str):
+        last_date = datetime.strptime(last_date_obj, "%Y-%m-%d")
+        last_date_str = last_date_obj
+    else:
+        # pandas Timestamp
+        last_date = last_date_obj.to_pydatetime()
+        last_date_str = last_date.strftime("%Y-%m-%d")
+    next_date = last_date + timedelta(days=1)
+    next_date_str = next_date.strftime("%Y-%m-%d")
+
+    # Compute scores using all available data
+    scores_list = scoring_fn(df)
+
+    # Rank and select top 20
+    forecast = rank_and_select(scores_list, k=20, model_name=model)
+
+    # Create a forecast fold (no actuals available for validation)
+    from c5_forecasting.evaluation.backtest import BacktestFold
+
+    forecast_fold = BacktestFold(
+        fold_index=len(result.folds),
+        cutoff_date=last_date_str,
+        target_date=next_date_str,
+        train_rows=len(df),
+        predicted_ranking=[
+            {"rank": r.rank, "part_id": r.part_id, "score": round(r.score, 6)}
+            for r in forecast.rankings
+        ],
+        actual_active_parts=[],  # No actuals for future date
+        actual_row_total=0,
+        hit_count=0,
+        hit_parts=[],
+        miss_parts=[],
+        actual_part_counts={},
+        all_scores=[{"part_id": s.part_id, "score": round(s.score, 6)} for s in scores_list],
+    )
+
+    # Create forecast metrics (no validation possible)
+    forecast_metric = FoldMetrics(
+        fold_index=len(result.folds),
+        ndcg_20=0.0,  # No actuals to compute metrics
+        weighted_recall_20=0.0,
+        brier_score=0.0,
+        precision_20=0.0,
+        recall_20=0.0,
+        jaccard_20=0.0,
+    )
+
+    # Append forecast fold to result
+    result.folds.append(forecast_fold)
+    fold_metrics.append(forecast_metric)
 
     # Write detailed export (52 columns with metadata, scores, metrics)
     typer.echo(f"Writing detailed predictions to: {detail_output}")
