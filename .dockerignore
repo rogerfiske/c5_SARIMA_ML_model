@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments (not needed in container)
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Caches
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Git
+.git/
+.gitignore
+
+# Generated artifacts (will be volume-mounted)
+artifacts/
+data/interim/
+data/processed/
+data/features/
+data/forecasts/
+
+# Environment files
+.env
+
+# OS
+Thumbs.db
+.DS_Store
+
+# BMAD
+_bmad/
+.bmad-core/
+
+# Documentation (not needed at runtime)
+docs/
+*.md
+!README.md
+
+# Tests (not needed at runtime)
+tests/
+
+# Docker files themselves
+Dockerfile
+.dockerignore
+docker-compose.yml

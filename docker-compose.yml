@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  forecasting:
+    image: c5-forecasting:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./data:/app/data
+      - ./configs:/app/configs:ro  # Read-only
+      - ./artifacts:/app/artifacts
+    environment:
+      - C5_LOG_LEVEL=${C5_LOG_LEVEL:-INFO}
+      - C5_DATASET_VARIANT=${C5_DATASET_VARIANT:-raw}
+    # Override command at runtime, e.g.:
+    # docker-compose run forecasting health-check
+    # docker-compose run forecasting compare --step 2000

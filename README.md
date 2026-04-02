@@ -21,6 +21,25 @@ poetry install
 poetry shell
 ```
 
+## Docker Usage
+
+For reproducible execution in a containerized environment:
+
+```bash
+# Build the container
+docker build -t c5-forecasting:latest .
+
+# Run any CLI command
+docker run --rm \
+  -v $(pwd)/data:/app/data:ro \
+  -v $(pwd)/artifacts:/app/artifacts \
+  c5-forecasting:latest health-check
+```
+
+See [docs/runbook/docker-usage.md](docs/runbook/docker-usage.md) for detailed instructions.
+
+**Note:** Local Poetry-based workflow remains fully supported. Docker is optional.
+
 ## Usage
 
 ```bash

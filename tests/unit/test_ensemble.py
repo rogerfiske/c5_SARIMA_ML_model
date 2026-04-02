@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from c5_forecasting.domain.constants import PART_COLUMNS, TOP_K, VALID_PART_IDS
+from c5_forecasting.domain.constants import PART_COLUMNS, VALID_PART_IDS
 from c5_forecasting.models.baseline import PartScore
 from c5_forecasting.models.ensemble import (
     _ENSEMBLE_WEIGHTS,
@@ -171,5 +171,5 @@ class TestEnsembleConstants:
         from c5_forecasting.models.registry import get_model_registry
 
         registry = get_model_registry()
-        for model_name in _ENSEMBLE_WEIGHTS.keys():
+        for model_name in _ENSEMBLE_WEIGHTS:
             assert model_name in registry, f"{model_name} not in registry"

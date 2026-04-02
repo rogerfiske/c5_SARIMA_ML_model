@@ -119,7 +119,7 @@ def ensemble_avg_scoring(df: pd.DataFrame) -> list[PartScore]:
     component_scores = _get_component_scores(_AVG_COMPONENTS, df)
 
     all_scores: dict[int, list[float]] = {}
-    for model_name, scores in component_scores.items():
+    for _, scores in component_scores.items():
         for ps in scores:
             all_scores.setdefault(ps.part_id, []).append(ps.score)
 
@@ -162,7 +162,7 @@ def ensemble_rank_avg_scoring(df: pd.DataFrame) -> list[PartScore]:
     component_scores = _get_component_scores(_RANK_AVG_COMPONENTS, df)
 
     all_ranks: dict[int, list[int]] = {}
-    for model_name, scores in component_scores.items():
+    for _, scores in component_scores.items():
         # Sort by (-score, part_id) to get ranking
         sorted_scores = sorted(scores, key=lambda ps: (-ps.score, ps.part_id))
         for rank, ps in enumerate(sorted_scores, 1):
