@@ -151,6 +151,86 @@ def write_daily_predictions_csv(
     return output_path
 
 
+def write_simple_predictions_csv(
+    result: BacktestResult,
+    output_path: Path,
+) -> Path:
+    """Write simplified daily predictions to CSV (date + 20 predictions only).
+
+    Output format (21 columns):
+      - Column 1: M/D/YYYY (date)
+      - Columns 2-21: pred-1 through pred-20 (predicted part IDs in rank order)
+
+    Example:
+        M/D/YYYY,pred-1,pred-2,pred-3,...,pred-20
+        9/8/2009,39,16,14,9,32,33,4,2,37,20,19,24,17,25,38,26,6,29,30,21
+
+    Args:
+        result: Backtest result containing all fold predictions.
+        output_path: Destination path for CSV file.
+
+    Returns:
+        Path to written CSV file.
+
+    Raises:
+        ValueError: If any prediction contains part ID 0 (invalid invariant).
+    """
+    # Build rows: one row per target date
+    rows = []
+    for fold in result.folds:
+        # Extract prediction IDs in rank order
+        pred_ids = []
+        for entry in fold.predicted_ranking:
+            part_id = entry["part_id"]
+
+            # CRITICAL: Validate no zeros (domain invariant)
+            if part_id == 0:
+                raise ValueError(
+                    f"Invalid prediction: part_id=0 in fold {fold.fold_index} "
+                    f"(target_date={fold.target_date}). Part ID 0 is forbidden."
+                )
+
+            pred_ids.append(part_id)
+
+        # Ensure exactly 20 predictions
+        if len(pred_ids) != 20:
+            raise ValueError(
+                f"Expected 20 predictions, got {len(pred_ids)} "
+                f"in fold {fold.fold_index} (target_date={fold.target_date})"
+            )
+
+        # Format date as M/D/YYYY (e.g., 9/8/2009)
+        # Parse YYYY-MM-DD format and convert
+        date_parts = fold.target_date.split("-")
+        if len(date_parts) != 3:
+            raise ValueError(f"Invalid date format: {fold.target_date}, expected YYYY-MM-DD")
+        year, month, day = date_parts
+        # Strip leading zeros from month and day
+        formatted_date = f"{int(month)}/{int(day)}/{year}"
+
+        # Build row as list: [date, pred1, pred2, ..., pred20]
+        row = [formatted_date] + pred_ids
+        rows.append(row)
+
+    # Create DataFrame with M/D/YYYY header + pred-1 through pred-20
+    columns = ["M/D/YYYY"] + [f"pred-{i}" for i in range(1, 21)]
+    df = pd.DataFrame(rows, columns=columns)
+
+    # Write to CSV
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, index=False)
+
+    logger.info(
+        "simple_predictions_csv_written",
+        path=str(output_path),
+        row_count=len(df),
+        first_date=df["M/D/YYYY"].iloc[0] if len(df) > 0 else None,
+        last_date=df["M/D/YYYY"].iloc[-1] if len(df) > 0 else None,
+    )
+
+    return output_path
+
+
 def write_timestamped_export(
     df: pd.DataFrame,
     artifacts_dir: Path,

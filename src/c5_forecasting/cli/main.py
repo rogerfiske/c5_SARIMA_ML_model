@@ -837,6 +837,7 @@ def export_daily_predictions_cmd(
     from c5_forecasting.evaluation.metrics import compute_backtest_metrics
     from c5_forecasting.evaluation.prediction_export import (
         write_daily_predictions_csv,
+        write_simple_predictions_csv,
         write_timestamped_export,
     )
     from c5_forecasting.models.registry import get_scoring_function
@@ -850,9 +851,14 @@ def export_daily_predictions_cmd(
         typer.echo(f"Invalid variant {variant!r}. Must be one of: {sorted(VALID_VARIANTS)}")
         raise typer.Exit(code=1)
 
-    # Resolve output path
+    # Resolve output paths
     if output is None:
-        output = Path("data") / "raw" / "c5_predictions.csv"
+        detail_output = Path("data") / "raw" / "c5_predictions_detail.csv"
+        simple_output = Path("data") / "raw" / "c5_predictions.csv"
+    else:
+        # If user specifies custom output, use it for detailed, derive simple from it
+        detail_output = output
+        simple_output = output.parent / output.name.replace(".csv", "_simple.csv")
 
     # Load dataset
     parquet_path = settings.processed_data_dir / f"{variant}_v1.parquet"
@@ -906,14 +912,24 @@ def export_daily_predictions_cmd(
     # Compute metrics
     fold_metrics, _ = compute_backtest_metrics(result)
 
-    # Write primary export
-    typer.echo(f"Writing predictions to: {output}")
-    export_path = write_daily_predictions_csv(result, fold_metrics, output)
+    # Write detailed export (52 columns with metadata, scores, metrics)
+    typer.echo(f"Writing detailed predictions to: {detail_output}")
+    detail_path = write_daily_predictions_csv(result, fold_metrics, detail_output)
 
-    # Write timestamped copy for audit trail
-    df_export = pd.read_csv(export_path)
-    timestamped_path = write_timestamped_export(
-        df_export,
+    # Write simplified export (21 columns: date + 20 predictions)
+    typer.echo(f"Writing simplified predictions to: {simple_output}")
+    simple_path = write_simple_predictions_csv(result, simple_output)
+
+    # Write timestamped copies for audit trail
+    df_detail = pd.read_csv(detail_path)
+    df_simple = pd.read_csv(simple_path)
+    timestamped_detail_path = write_timestamped_export(
+        df_detail,
+        settings.artifacts_dir,
+        "c5_predictions_detail.csv",
+    )
+    timestamped_simple_path = write_timestamped_export(
+        df_simple,
         settings.artifacts_dir,
         "c5_predictions.csv",
     )
@@ -922,19 +938,28 @@ def export_daily_predictions_cmd(
     typer.echo("")
     typer.echo(f"  Model:            {result.provenance.model_name}")
     typer.echo(f"  Dataset variant:  {result.provenance.dataset_variant}")
-    typer.echo(f"  Total rows:       {len(df_export)}")
-    typer.echo(f"  First target:     {df_export['target_date'].iloc[0]}")
-    typer.echo(f"  Last target:      {df_export['target_date'].iloc[-1]}")
-    typer.echo(f"  Primary output:   {export_path}")
-    typer.echo(f"  Timestamped copy: {timestamped_path}")
+    typer.echo(f"  Total rows:       {len(df_detail)}")
+    typer.echo(f"  First target:     {df_detail['target_date'].iloc[0]}")
+    typer.echo(f"  Last target:      {df_detail['target_date'].iloc[-1]}")
+    typer.echo("")
+    typer.echo("  Outputs:")
+    typer.echo(f"    Simplified:     {simple_path} (21 cols: date + 20 predictions)")
+    typer.echo(f"    Detailed:       {detail_path} (52 cols: full metadata)")
+    typer.echo("")
+    typer.echo("  Timestamped copies:")
+    typer.echo(f"    Simplified:     {timestamped_simple_path}")
+    typer.echo(f"    Detailed:       {timestamped_detail_path}")
 
-    # Verify no zeros in predictions
-    pred_cols = [f"pred_{i:02d}" for i in range(1, 21)]
-    has_zeros = any((df_export[col] == 0).any() for col in pred_cols)
-    if has_zeros:
+    # Verify no zeros in predictions (check both formats)
+    pred_cols_detail = [f"pred_{i:02d}" for i in range(1, 21)]
+    pred_cols_simple = [f"pred-{i}" for i in range(1, 21)]
+    has_zeros_detail = any((df_detail[col] == 0).any() for col in pred_cols_detail)
+    has_zeros_simple = any((df_simple[col] == 0).any() for col in pred_cols_simple)
+    if has_zeros_detail or has_zeros_simple:
         typer.echo("  WARNING: Found zeros in prediction columns!")
         raise typer.Exit(code=1)
     else:
+        typer.echo("")
         typer.echo("  Zero check:       PASSED (no zeros in predictions)")
 
     typer.echo("")

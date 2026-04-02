@@ -14,6 +14,7 @@ from c5_forecasting.evaluation.metrics import FoldMetrics
 from c5_forecasting.evaluation.prediction_export import (
     _format_actual_parts,
     write_daily_predictions_csv,
+    write_simple_predictions_csv,
 )
 
 
@@ -333,3 +334,94 @@ class TestWriteDailyPredictionsCSV:
 
         with pytest.raises(ValueError, match="Fold count mismatch"):
             write_daily_predictions_csv(result, metrics, output_path)
+
+
+class TestWriteSimplePredictionsCSV:
+    """Tests for write_simple_predictions_csv function."""
+
+    def test_simple_csv_structure(self, tmp_path: Path) -> None:
+        """Simple CSV has 21 columns (M/D/YYYY + pred-1..pred-20)."""
+        folds = [_make_mock_fold(0, "2009-09-07", "2009-09-08", 365)]
+        result = _make_mock_result(folds)
+
+        output_path = tmp_path / "test_simple.csv"
+        write_simple_predictions_csv(result, output_path)
+
+        df = pd.read_csv(output_path)
+
+        # Verify column count (1 date + 20 preds)
+        assert len(df.columns) == 21
+
+        # Verify column names
+        expected_cols = ["M/D/YYYY"] + [f"pred-{i}" for i in range(1, 21)]
+        assert list(df.columns) == expected_cols
+
+    def test_simple_csv_date_format(self, tmp_path: Path) -> None:
+        """Date column uses M/D/YYYY format."""
+        folds = [_make_mock_fold(0, "2009-09-07", "2009-09-08", 365)]
+        result = _make_mock_result(folds)
+
+        output_path = tmp_path / "test_simple.csv"
+        write_simple_predictions_csv(result, output_path)
+
+        df = pd.read_csv(output_path)
+
+        # Check first date is in M/D/YYYY format (9/8/2009)
+        assert df["M/D/YYYY"].iloc[0] == "9/8/2009"
+
+    def test_simple_csv_no_zeros(self, tmp_path: Path) -> None:
+        """All pred-XX columns contain no zeros."""
+        folds = [_make_mock_fold(0, "2009-09-07", "2009-09-08", 365)]
+        result = _make_mock_result(folds)
+
+        output_path = tmp_path / "test_simple.csv"
+        write_simple_predictions_csv(result, output_path)
+
+        df = pd.read_csv(output_path)
+
+        # Check all pred-XX columns
+        pred_cols = [f"pred-{i}" for i in range(1, 21)]
+        for col in pred_cols:
+            assert 0 not in df[col].values, f"Found 0 in {col}"
+
+    def test_simple_csv_valid_part_ids(self, tmp_path: Path) -> None:
+        """All predictions are valid part IDs (1-39)."""
+        folds = [_make_mock_fold(0, "2009-09-07", "2009-09-08", 365)]
+        result = _make_mock_result(folds)
+
+        output_path = tmp_path / "test_simple.csv"
+        write_simple_predictions_csv(result, output_path)
+
+        df = pd.read_csv(output_path)
+
+        pred_cols = [f"pred-{i}" for i in range(1, 21)]
+        for col in pred_cols:
+            for val in df[col]:
+                assert val in VALID_PART_IDS, f"{col} contains invalid ID {val}"
+
+    def test_simple_csv_deterministic(self, tmp_path: Path) -> None:
+        """Same input produces same output."""
+        folds = [_make_mock_fold(0, "2009-09-07", "2009-09-08", 365)]
+        result = _make_mock_result(folds)
+
+        output1 = tmp_path / "simple1.csv"
+        output2 = tmp_path / "simple2.csv"
+
+        write_simple_predictions_csv(result, output1)
+        write_simple_predictions_csv(result, output2)
+
+        df1 = pd.read_csv(output1)
+        df2 = pd.read_csv(output2)
+
+        pd.testing.assert_frame_equal(df1, df2)
+
+    def test_simple_csv_raises_on_zero(self, tmp_path: Path) -> None:
+        """Raises ValueError if prediction contains part ID 0."""
+        fold = _make_mock_fold(0, "2009-09-07", "2009-09-08", 365)
+        fold.predicted_ranking[0]["part_id"] = 0  # Inject zero
+
+        result = _make_mock_result([fold])
+        output_path = tmp_path / "test_simple.csv"
+
+        with pytest.raises(ValueError, match="part_id=0"):
+            write_simple_predictions_csv(result, output_path)
